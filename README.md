@@ -180,11 +180,7 @@ PidSimulator/
 ├─ Controls/                双 Y 轴曲线控件
 ├─ Themes/                  亮色/暗色主题画刷
 └─ Services/                主题服务
-```
-
-## 作者
-
-xiapeng01
+``` 
 
 ## 许可
 
