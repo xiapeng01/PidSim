@@ -12,6 +12,9 @@ public sealed class PidSimulationEngine
 
     public double Setpoint { get; set; }
     public double SampleTime { get; private set; } = 0.1;
+
+    /// <summary>仅监控输入：不执行 PID 控制，输出保持 0。</summary>
+    public bool MonitorOnly { get; set; }
     public double PidOutput => Volatile.Read(ref _pidOutput);
     public double ProcessValue => Plant.ReadDelayed();
     public double Error => Setpoint - ProcessValue;
@@ -53,6 +56,13 @@ public sealed class PidSimulationEngine
     /// </summary>
     public ChartSample Step()
     {
+        if (MonitorOnly)
+        {
+            Volatile.Write(ref _pidOutput, 0);
+            Time += SampleTime;
+            return new ChartSample(Time, Setpoint, ProcessValue, 0);
+        }
+
         if (Controller is null)
             throw new InvalidOperationException("仿真尚未配置 PID 控制器");
 

@@ -105,9 +105,16 @@
                     <Button Content="复位" Width="64" Margin="0,0,8,0"
                             Style="{StaticResource SecondaryButton}"
                             Command="{Binding ResetSimulationCommand}"/>
-                    <Button Content="清曲线" Width="72"
+                    <Button Content="清曲线" Width="72" Margin="0,0,8,0"
                             Style="{StaticResource SecondaryButton}"
                             Command="{Binding ClearChartCommand}"/>
+                    <Button Content="导出" Width="64" Margin="0,0,8,0"
+                            Style="{StaticResource SecondaryButton}"
+                            Command="{Binding ExportParametersCommand}"/>
+                    <Button Content="导入" Width="64"
+                            Style="{StaticResource SecondaryButton}"
+                            IsEnabled="{Binding CanSwitchStructure}"
+                            Command="{Binding ImportParametersCommand}"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -181,6 +188,12 @@
                                 <TextBox Grid.Column="1"
                                          Text="{Binding InitialValue, UpdateSourceTrigger=LostFocus}"/>
                             </Grid>
+
+                            <CheckBox Content="只监控输入值（不执行 PID，不写入输出）"
+                                      IsChecked="{Binding MonitorOnlyInput}"
+                                      Foreground="{DynamicResource TextPrimary}"
+                                      Margin="0,10,0,0"
+                                      Visibility="{Binding IsModbusModel, Converter={StaticResource BoolToVisibility}}"/>
 
                             <TextBlock Style="{StaticResource HintText}"
                                        Text="运行中修改参数会立即生效；切换仿真模型或 PID 类型需先停止仿真。"
@@ -311,6 +324,216 @@
                                        Margin="0,4,0,0"/>
                         </StackPanel>
                     </GroupBox>
+
+                    <GroupBox Header="Modbus 通信参数"
+                              Visibility="{Binding IsModbusModel, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel>
+                            <TextBlock Text="输入通道（读取过程值 PV）" Style="{StaticResource ParamLabel}"
+                                       FontWeight="SemiBold" Margin="0,2,0,6"/>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="接口类型" Style="{StaticResource ParamLabel}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ModbusInterfaceNames}"
+                                          SelectedItem="{Binding InputInterfaceName}"
+                                          Background="{DynamicResource InputBg}"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          Foreground="{DynamicResource TextPrimary}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputNetwork, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="IP 地址" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputIp, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputNetwork, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="端口" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputPort, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputRtu, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="串口" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputSerialPort, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputRtu, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="波特率" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputBaudRate, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputRtu, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="数据位" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputDataBits, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputRtu, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="校验位" Style="{StaticResource ParamLabel}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ParityNames}"
+                                          SelectedItem="{Binding InputParityName}"
+                                          Background="{DynamicResource InputBg}"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          Foreground="{DynamicResource TextPrimary}"/>
+                            </Grid>
+                            <Grid Margin="0,2" Visibility="{Binding IsInputRtu, Converter={StaticResource BoolToVisibility}}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="停止位" Style="{StaticResource ParamLabel}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding StopBitsNames}"
+                                          SelectedItem="{Binding InputStopBitsName}"
+                                          Background="{DynamicResource InputBg}"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          Foreground="{DynamicResource TextPrimary}"/>
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="字节序" Style="{StaticResource ParamLabel}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding EndianNames}"
+                                          SelectedItem="{Binding InputEndianName}"
+                                          Background="{DynamicResource InputBg}"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          Foreground="{DynamicResource TextPrimary}"/>
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="站号" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputStation, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="寄存器地址" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputRegisterAddress, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="寄存器区" Style="{StaticResource ParamLabel}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding InputRegisterAreaNames}"
+                                          SelectedItem="{Binding InputRegisterAreaName}"
+                                          Background="{DynamicResource InputBg}"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          Foreground="{DynamicResource TextPrimary}"/>
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="数据类型" Style="{StaticResource ParamLabel}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ModbusValueTypeNames}"
+                                          SelectedItem="{Binding InputValueTypeName}"
+                                          Background="{DynamicResource InputBg}"
+                                          BorderBrush="{DynamicResource BorderBrush}"
+                                          Foreground="{DynamicResource TextPrimary}"/>
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="读取周期 ms" Style="{StaticResource ParamLabel}"/>
+                                <TextBox Grid.Column="1" Text="{Binding InputPeriodMs, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12,0,10"/>
+                            <StackPanel IsEnabled="{Binding IsOutputConfigEnabled}">
+                                <TextBlock Text="输出通道（写入 PID 输出）" Style="{StaticResource ParamLabel}"
+                                           FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                <CheckBox Content="与输入共用同一通信" IsChecked="{Binding ShareModbusConnection}"
+                                          Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,6"/>
+                                <StackPanel Visibility="{Binding IsOutputLinkSeparate, Converter={StaticResource BoolToVisibility}}">
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="接口类型" Style="{StaticResource ParamLabel}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ModbusInterfaceNames}"
+                                              SelectedItem="{Binding OutputInterfaceName}"
+                                              Background="{DynamicResource InputBg}"
+                                              BorderBrush="{DynamicResource BorderBrush}"
+                                              Foreground="{DynamicResource TextPrimary}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputNetwork, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="IP 地址" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputIp, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputNetwork, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="端口" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputPort, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputRtu, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="串口" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputSerialPort, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputRtu, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="波特率" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputBaudRate, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputRtu, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="数据位" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputDataBits, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputRtu, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="校验位" Style="{StaticResource ParamLabel}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ParityNames}"
+                                              SelectedItem="{Binding OutputParityName}"
+                                              Background="{DynamicResource InputBg}"
+                                              BorderBrush="{DynamicResource BorderBrush}"
+                                              Foreground="{DynamicResource TextPrimary}"/>
+                                </Grid>
+                                <Grid Margin="0,2" Visibility="{Binding IsOutputRtu, Converter={StaticResource BoolToVisibility}}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="停止位" Style="{StaticResource ParamLabel}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding StopBitsNames}"
+                                              SelectedItem="{Binding OutputStopBitsName}"
+                                              Background="{DynamicResource InputBg}"
+                                              BorderBrush="{DynamicResource BorderBrush}"
+                                              Foreground="{DynamicResource TextPrimary}"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="字节序" Style="{StaticResource ParamLabel}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding EndianNames}"
+                                              SelectedItem="{Binding OutputEndianName}"
+                                              Background="{DynamicResource InputBg}"
+                                              BorderBrush="{DynamicResource BorderBrush}"
+                                              Foreground="{DynamicResource TextPrimary}"/>
+                                </Grid>
+                                </StackPanel>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="站号" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputStation, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="寄存器地址" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputRegisterAddress, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="寄存器区" Style="{StaticResource ParamLabel}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding OutputRegisterAreaNames}"
+                                              SelectedItem="{Binding OutputRegisterAreaName}"
+                                              Background="{DynamicResource InputBg}"
+                                              BorderBrush="{DynamicResource BorderBrush}"
+                                              Foreground="{DynamicResource TextPrimary}"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="数据类型" Style="{StaticResource ParamLabel}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ModbusValueTypeNames}"
+                                              SelectedItem="{Binding OutputValueTypeName}"
+                                              Background="{DynamicResource InputBg}"
+                                              BorderBrush="{DynamicResource BorderBrush}"
+                                              Foreground="{DynamicResource TextPrimary}"/>
+                                </Grid>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="写入周期 ms" Style="{StaticResource ParamLabel}"/>
+                                    <TextBox Grid.Column="1" Text="{Binding OutputPeriodMs, UpdateSourceTrigger=LostFocus}"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <TextBlock Style="{StaticResource HintText}"
+                                       Text="输入可选输入寄存器(只读)或保持寄存器；输出只能写保持寄存器。数据类型支持 Int16/UInt16(1 寄存器) 与 Int32/UInt32/Float(2 寄存器)。字节序可分别选择，共用通信时输出沿用输入字节序。"
+                                       Margin="0,10,0,0"/>
+                        </StackPanel>
+                    </GroupBox>
                 </StackPanel>
             </ScrollViewer>
 
@@ -393,7 +616,8 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <controls:ChartCanvas Grid.Row="0"
+                        <controls:ChartCanvas x:Name="Chart"
+                                              Grid.Row="0"
                                               Margin="4"
                                               Samples="{Binding Samples}"
                                               GridBrush="{DynamicResource ChartGrid}"

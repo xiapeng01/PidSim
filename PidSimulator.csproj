@@ -22,10 +22,15 @@
     <!-- .NET 程序集版本号每段最大 65534，第四段采用标准 .NET 自动版本号规则：当天秒数 / 2 -->
     <BuildRevision>$([System.Convert]::ToInt32($([System.Math]::Floor($([MSBuild]::Divide($(BuildSeconds), 2))))))</BuildRevision>
     <Version>$(VersionMajor).$(VersionMinor).$(BuildDays).$(BuildRevision)</Version>
-    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <!-- WPF 标记编译可能在另一个 MSBuild 节点重新求值项目；固定 AssemblyVersion 可避免 BAML 与程序集版本不一致 -->
+    <AssemblyVersion>$(VersionMajor).$(VersionMinor).0.0</AssemblyVersion>
     <FileVersion>$(Version)</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NModbus.Extensions" Version="0.3.0" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />

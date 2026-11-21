@@ -43,7 +43,17 @@ public partial class MainWindow : Window
         }
 
         if (e.OriginalSource is not System.Windows.Controls.Control)
-            DragMove();
+        {
+            Chart.SuspendRendering = true;
+            try
+            {
+                DragMove();
+            }
+            finally
+            {
+                Chart.SuspendRendering = false;
+            }
+        }
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)

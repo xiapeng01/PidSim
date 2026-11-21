@@ -5,5 +5,6 @@ public enum SimulationModel
 {
     PumpFlow,
     Heating,
-    Cooling
+    Cooling,
+    Modbus
 }

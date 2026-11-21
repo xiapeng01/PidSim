@@ -23,6 +23,8 @@ public sealed class ChartCanvas : Canvas
     private static readonly Brush DefaultSetpointBrush = CreateFrozenBrush(0xFF, 0x34, 0xD3, 0x99);
     private static readonly Brush DefaultOutputBrush = CreateFrozenBrush(0xFF, 0xA7, 0x8B, 0xFA);
 
+    private bool _suspendRendering;
+
     public static readonly DependencyProperty SamplesProperty = DependencyProperty.Register(
         nameof(Samples),
         typeof(ObservableCollection<ChartSample>),
@@ -64,6 +66,21 @@ public sealed class ChartCanvas : Canvas
     {
         get => (ObservableCollection<ChartSample>?)GetValue(SamplesProperty);
         set => SetValue(SamplesProperty, value);
+    }
+
+    /// <summary>窗口拖动等交互期间暂停重绘，交互结束后恢复并刷新一次。</summary>
+    public bool SuspendRendering
+    {
+        get => _suspendRendering;
+        set
+        {
+            if (_suspendRendering == value)
+                return;
+
+            _suspendRendering = value;
+            if (!value)
+                InvalidateVisual();
+        }
     }
 
     public Brush GridBrush
@@ -140,12 +157,14 @@ public sealed class ChartCanvas : Canvas
         if (e.NewValue is INotifyCollectionChanged newCollection)
             newCollection.CollectionChanged += canvas.OnSamplesCollectionChanged;
 
-        canvas.InvalidateVisual();
+        if (!canvas._suspendRendering)
+            canvas.InvalidateVisual();
     }
 
     private void OnSamplesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        InvalidateVisual();
+        if (!_suspendRendering)
+            InvalidateVisual();
     }
 
     protected override void OnRender(DrawingContext dc)

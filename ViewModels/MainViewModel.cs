@@ -1,6 +1,13 @@
 ﻿using System.Collections.ObjectModel;
+using System.IO;
+using System.IO.Ports;
+using System.Text;
+using System.Text.Json;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Microsoft.Win32;
+using NModbus.Extensions;
+using PidSimulator.Models.Configuration;
 using PidSimulator.Models.Pid;
 using PidSimulator.Models.Simulation;
 using PidSimulator.Services;
@@ -49,6 +56,38 @@ public sealed class MainViewModel : ObservableObject
     private double _temperatureTimeConstant = 30;
     private double _temperatureDelayTime;
 
+    private string _inputInterfaceName = "ModbusTcp";
+    private string _inputIp = "127.0.0.1";
+    private int _inputPort = 502;
+    private string _inputSerialPort = "COM1";
+    private int _inputBaudRate = 9600;
+    private int _inputDataBits = 8;
+    private string _inputParityName = "None";
+    private string _inputStopBitsName = "One";
+    private string _inputEndianName = "CDAB(低字在前,默认)";
+    private int _inputStation = 1;
+    private int _inputRegisterAddress;
+    private string _inputRegisterAreaName = "保持寄存器(可读写)";
+    private string _inputValueTypeName = "Float";
+    private int _inputPeriodMs = 100;
+
+    private string _outputInterfaceName = "ModbusTcp";
+    private string _outputIp = "127.0.0.1";
+    private int _outputPort = 502;
+    private string _outputSerialPort = "COM1";
+    private int _outputBaudRate = 9600;
+    private int _outputDataBits = 8;
+    private string _outputParityName = "None";
+    private string _outputStopBitsName = "One";
+    private string _outputEndianName = "CDAB(低字在前,默认)";
+    private int _outputStation = 1;
+    private int _outputRegisterAddress = 1;
+    private string _outputRegisterAreaName = "保持寄存器(可读写)";
+    private string _outputValueTypeName = "Float";
+    private int _outputPeriodMs = 100;
+    private bool _shareModbusConnection;
+    private bool _monitorOnlyInput;
+
     private string _status = "就绪";
     private double _processValue;
     private double _pidOutput;
@@ -66,6 +105,8 @@ public sealed class MainViewModel : ObservableObject
         ResetSimulationCommand = new RelayCommand(_ => ResetSimulation());
         ClearChartCommand = new RelayCommand(_ => ClearChart());
         ToggleThemeCommand = new RelayCommand(_ => ToggleTheme());
+        ExportParametersCommand = new RelayCommand(_ => ExportParameters());
+        ImportParametersCommand = new RelayCommand(_ => ImportParameters(), _ => !IsRunning);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(SampleTime) };
         _timer.Tick += OnTimerTick;
@@ -105,7 +146,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public IReadOnlyList<string> SimulationModelNames { get; } = new[] { "水泵流量计", "加热", "制冷" };
+    public IReadOnlyList<string> SimulationModelNames { get; } = new[] { "水泵流量计", "加热", "制冷", "Modbus通信" };
 
     public string SelectedSimulationModelName
     {
@@ -113,6 +154,7 @@ public sealed class MainViewModel : ObservableObject
         {
             SimulationModel.Heating => "加热",
             SimulationModel.Cooling => "制冷",
+            SimulationModel.Modbus => "Modbus通信",
             _ => "水泵流量计"
         };
         set
@@ -121,6 +163,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 "加热" => SimulationModel.Heating,
                 "制冷" => SimulationModel.Cooling,
+                "Modbus通信" => SimulationModel.Modbus,
                 _ => SimulationModel.PumpFlow
             };
         }
@@ -148,6 +191,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(SelectedSimulationModelName));
             OnPropertyChanged(nameof(IsFlowModel));
             OnPropertyChanged(nameof(IsTemperatureModel));
+            OnPropertyChanged(nameof(IsModbusModel));
             OnPropertyChanged(nameof(PlantParameterHeader));
             OnPropertyChanged(nameof(SetpointMinimum));
             OnPropertyChanged(nameof(SetpointMaximum));
@@ -158,10 +202,16 @@ public sealed class MainViewModel : ObservableObject
 
     public bool IsFlowModel => SelectedSimulationModel == SimulationModel.PumpFlow;
 
-    public bool IsTemperatureModel => SelectedSimulationModel != SimulationModel.PumpFlow;
+    public bool IsTemperatureModel => SelectedSimulationModel is SimulationModel.Heating or SimulationModel.Cooling;
 
-    public string PlantParameterHeader =>
-        SelectedSimulationModel == SimulationModel.Cooling ? "制冷模型参数" : "加热模型参数";
+    public bool IsModbusModel => SelectedSimulationModel == SimulationModel.Modbus;
+
+    public string PlantParameterHeader => SelectedSimulationModel switch
+    {
+        SimulationModel.Cooling => "制冷模型参数",
+        SimulationModel.Modbus => "Modbus 通信参数",
+        _ => "加热模型参数"
+    };
 
     public bool CanSwitchStructure => !IsRunning;
 
@@ -187,6 +237,8 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ResetSimulationCommand { get; }
     public RelayCommand ClearChartCommand { get; }
     public RelayCommand ToggleThemeCommand { get; }
+    public RelayCommand ExportParametersCommand { get; }
+    public RelayCommand ImportParametersCommand { get; }
 
     public bool IsRunning
     {
@@ -207,6 +259,7 @@ public sealed class MainViewModel : ObservableObject
         StartCommand?.RaiseCanExecuteChanged();
         StopCommand?.RaiseCanExecuteChanged();
         StepOnceCommand?.RaiseCanExecuteChanged();
+        ImportParametersCommand?.RaiseCanExecuteChanged();
     }
 
     private void ToggleTheme()
@@ -467,6 +520,257 @@ public sealed class MainViewModel : ObservableObject
         set { if (SetProperty(ref _temperatureDelayTime, value)) OnParameterChanged(); }
     }
 
+    public IReadOnlyList<string> ModbusInterfaceNames { get; } =
+        new[] { "ModbusRtu", "ModbusTcp", "ModbusRtuOverTcp" };
+
+    public IReadOnlyList<string> ParityNames { get; } =
+        new[] { "None", "Odd", "Even", "Mark", "Space" };
+
+    public IReadOnlyList<string> StopBitsNames { get; } =
+        new[] { "One", "OnePointFive", "Two" };
+
+    public IReadOnlyList<string> EndianNames { get; } =
+        new[] { "ABCD(大端)", "BADC(字内交换)", "CDAB(低字在前,默认)", "DCBA(小端)" };
+
+    public IReadOnlyList<string> ModbusValueTypeNames { get; } =
+        new[] { "Int16", "UInt16", "Int32", "UInt32", "Float" };
+
+    public IReadOnlyList<string> InputRegisterAreaNames { get; } =
+        new[] { "输入寄存器(只读)", "保持寄存器(可读写)" };
+
+    public IReadOnlyList<string> OutputRegisterAreaNames { get; } =
+        new[] { "保持寄存器(可读写)" };
+
+    public bool MonitorOnlyInput
+    {
+        get => _monitorOnlyInput;
+        set
+        {
+            if (SetProperty(ref _monitorOnlyInput, value))
+            {
+                OnPropertyChanged(nameof(IsOutputConfigEnabled));
+                OnParameterChanged();
+            }
+        }
+    }
+
+    public bool IsOutputConfigEnabled => !MonitorOnlyInput;
+
+    public bool ShareModbusConnection
+    {
+        get => _shareModbusConnection;
+        set
+        {
+            if (SetProperty(ref _shareModbusConnection, value))
+            {
+                OnPropertyChanged(nameof(IsOutputLinkSeparate));
+                OnParameterChanged();
+            }
+        }
+    }
+
+    public bool IsOutputLinkSeparate => !ShareModbusConnection;
+
+    public string InputInterfaceName
+    {
+        get => _inputInterfaceName;
+        set
+        {
+            if (SetProperty(ref _inputInterfaceName, value))
+                NotifyModbusInterfaceChanged(true);
+        }
+    }
+
+    public bool IsInputRtu => InputInterfaceName == "ModbusRtu";
+
+    public bool IsInputNetwork => !IsInputRtu;
+
+    public string InputIp
+    {
+        get => _inputIp;
+        set { if (SetProperty(ref _inputIp, value)) OnParameterChanged(); }
+    }
+
+    public int InputPort
+    {
+        get => _inputPort;
+        set { if (SetProperty(ref _inputPort, value)) OnParameterChanged(); }
+    }
+
+    public string InputSerialPort
+    {
+        get => _inputSerialPort;
+        set { if (SetProperty(ref _inputSerialPort, value)) OnParameterChanged(); }
+    }
+
+    public int InputBaudRate
+    {
+        get => _inputBaudRate;
+        set { if (SetProperty(ref _inputBaudRate, value)) OnParameterChanged(); }
+    }
+
+    public int InputDataBits
+    {
+        get => _inputDataBits;
+        set { if (SetProperty(ref _inputDataBits, value)) OnParameterChanged(); }
+    }
+
+    public string InputParityName
+    {
+        get => _inputParityName;
+        set { if (SetProperty(ref _inputParityName, value)) OnParameterChanged(); }
+    }
+
+    public string InputStopBitsName
+    {
+        get => _inputStopBitsName;
+        set { if (SetProperty(ref _inputStopBitsName, value)) OnParameterChanged(); }
+    }
+
+    public string InputEndianName
+    {
+        get => _inputEndianName;
+        set { if (SetProperty(ref _inputEndianName, value)) OnParameterChanged(); }
+    }
+
+    public int InputStation
+    {
+        get => _inputStation;
+        set { if (SetProperty(ref _inputStation, value)) OnParameterChanged(); }
+    }
+
+    public int InputRegisterAddress
+    {
+        get => _inputRegisterAddress;
+        set { if (SetProperty(ref _inputRegisterAddress, value)) OnParameterChanged(); }
+    }
+
+    public string InputRegisterAreaName
+    {
+        get => _inputRegisterAreaName;
+        set { if (SetProperty(ref _inputRegisterAreaName, value)) OnParameterChanged(); }
+    }
+
+    public string InputValueTypeName
+    {
+        get => _inputValueTypeName;
+        set { if (SetProperty(ref _inputValueTypeName, value)) OnParameterChanged(); }
+    }
+
+    public int InputPeriodMs
+    {
+        get => _inputPeriodMs;
+        set { if (SetProperty(ref _inputPeriodMs, value)) OnParameterChanged(); }
+    }
+
+    public string OutputInterfaceName
+    {
+        get => _outputInterfaceName;
+        set
+        {
+            if (SetProperty(ref _outputInterfaceName, value))
+                NotifyModbusInterfaceChanged(false);
+        }
+    }
+
+    public bool IsOutputRtu => OutputInterfaceName == "ModbusRtu";
+
+    public bool IsOutputNetwork => !IsOutputRtu;
+
+    public string OutputIp
+    {
+        get => _outputIp;
+        set { if (SetProperty(ref _outputIp, value)) OnParameterChanged(); }
+    }
+
+    public int OutputPort
+    {
+        get => _outputPort;
+        set { if (SetProperty(ref _outputPort, value)) OnParameterChanged(); }
+    }
+
+    public string OutputSerialPort
+    {
+        get => _outputSerialPort;
+        set { if (SetProperty(ref _outputSerialPort, value)) OnParameterChanged(); }
+    }
+
+    public int OutputBaudRate
+    {
+        get => _outputBaudRate;
+        set { if (SetProperty(ref _outputBaudRate, value)) OnParameterChanged(); }
+    }
+
+    public int OutputDataBits
+    {
+        get => _outputDataBits;
+        set { if (SetProperty(ref _outputDataBits, value)) OnParameterChanged(); }
+    }
+
+    public string OutputParityName
+    {
+        get => _outputParityName;
+        set { if (SetProperty(ref _outputParityName, value)) OnParameterChanged(); }
+    }
+
+    public string OutputStopBitsName
+    {
+        get => _outputStopBitsName;
+        set { if (SetProperty(ref _outputStopBitsName, value)) OnParameterChanged(); }
+    }
+
+    public string OutputEndianName
+    {
+        get => _outputEndianName;
+        set { if (SetProperty(ref _outputEndianName, value)) OnParameterChanged(); }
+    }
+
+    public int OutputStation
+    {
+        get => _outputStation;
+        set { if (SetProperty(ref _outputStation, value)) OnParameterChanged(); }
+    }
+
+    public int OutputRegisterAddress
+    {
+        get => _outputRegisterAddress;
+        set { if (SetProperty(ref _outputRegisterAddress, value)) OnParameterChanged(); }
+    }
+
+    public string OutputRegisterAreaName
+    {
+        get => _outputRegisterAreaName;
+        set { if (SetProperty(ref _outputRegisterAreaName, value)) OnParameterChanged(); }
+    }
+
+    public string OutputValueTypeName
+    {
+        get => _outputValueTypeName;
+        set { if (SetProperty(ref _outputValueTypeName, value)) OnParameterChanged(); }
+    }
+
+    public int OutputPeriodMs
+    {
+        get => _outputPeriodMs;
+        set { if (SetProperty(ref _outputPeriodMs, value)) OnParameterChanged(); }
+    }
+
+    private void NotifyModbusInterfaceChanged(bool input)
+    {
+        if (input)
+        {
+            OnPropertyChanged(nameof(IsInputRtu));
+            OnPropertyChanged(nameof(IsInputNetwork));
+        }
+        else
+        {
+            OnPropertyChanged(nameof(IsOutputRtu));
+            OnPropertyChanged(nameof(IsOutputNetwork));
+        }
+
+        OnParameterChanged();
+    }
+
     private void OnParameterChanged()
     {
         if (_isInitializing)
@@ -487,6 +791,7 @@ public sealed class MainViewModel : ObservableObject
         PidParameters p = BuildParameters();
         Validate(p);
 
+        _engine.MonitorOnly = IsModbusModel && MonitorOnlyInput;
         ApplyPlantConfig();
 
         _engine.Setpoint = Setpoint;
@@ -548,7 +853,7 @@ public sealed class MainViewModel : ObservableObject
             if (PumpDelayTime < 0 || double.IsNaN(PumpDelayTime))
                 throw new ArgumentException("水泵滞后时间必须为非负数");
         }
-        else
+        else if (IsTemperatureModel)
         {
             if (MaxTemperatureCommand <= 0 || double.IsNaN(MaxTemperatureCommand))
                 throw new ArgumentException("满功率指令必须大于 0");
@@ -558,6 +863,20 @@ public sealed class MainViewModel : ObservableObject
                 throw new ArgumentException("温控时间常数必须大于 0");
             if (TemperatureDelayTime < 0 || double.IsNaN(TemperatureDelayTime))
                 throw new ArgumentException("温控滞后时间必须为非负数");
+        }
+        else if (IsModbusModel)
+        {
+            ValidateModbusChannel("输入", InputInterfaceName, InputIp, InputPort,
+                InputSerialPort, InputBaudRate, InputDataBits, InputEndianName, InputStation, InputRegisterAddress,
+                InputRegisterAreaName, InputValueTypeName, InputPeriodMs, true, false);
+
+            if (!MonitorOnlyInput)
+            {
+                string outEndian = ShareModbusConnection ? InputEndianName : OutputEndianName;
+                ValidateModbusChannel("输出", OutputInterfaceName, OutputIp, OutputPort,
+                    OutputSerialPort, OutputBaudRate, OutputDataBits, outEndian, OutputStation, OutputRegisterAddress,
+                    OutputRegisterAreaName, OutputValueTypeName, OutputPeriodMs, !ShareModbusConnection, true);
+            }
         }
     }
 
@@ -586,22 +905,154 @@ public sealed class MainViewModel : ObservableObject
                 temperature.TimeConstant = TemperatureTimeConstant;
                 temperature.DelayTime = TemperatureDelayTime;
                 break;
+
+            case ModbusPlant modbus:
+                string outInterface = ShareModbusConnection ? InputInterfaceName : OutputInterfaceName;
+                string outIp = ShareModbusConnection ? InputIp : OutputIp;
+                int outPort = ShareModbusConnection ? InputPort : OutputPort;
+                string outSerialPort = ShareModbusConnection ? InputSerialPort : OutputSerialPort;
+                int outBaudRate = ShareModbusConnection ? InputBaudRate : OutputBaudRate;
+                int outDataBits = ShareModbusConnection ? InputDataBits : OutputDataBits;
+                string outParity = ShareModbusConnection ? InputParityName : OutputParityName;
+                string outStopBits = ShareModbusConnection ? InputStopBitsName : OutputStopBitsName;
+                string outEndian = ShareModbusConnection ? InputEndianName : OutputEndianName;
+
+                modbus.Configure(new ModbusPlantConfig
+                {
+                    Input = BuildChannelConfig(InputInterfaceName, InputIp, InputPort,
+                        InputSerialPort, InputBaudRate, InputDataBits, InputParityName, InputStopBitsName, InputEndianName,
+                        InputStation, InputRegisterAddress, InputRegisterAreaName, InputValueTypeName, InputPeriodMs),
+                    Output = BuildChannelConfig(outInterface, outIp, outPort,
+                        outSerialPort, outBaudRate, outDataBits, outParity, outStopBits, outEndian,
+                        OutputStation, OutputRegisterAddress, OutputRegisterAreaName, OutputValueTypeName, OutputPeriodMs),
+                    WriteOutput = !MonitorOnlyInput,
+                    ShareConnection = ShareModbusConnection
+                });
+                break;
         }
 
         plant.ClampCurrentValue();
     }
 
+    private static ModbusChannelConfig BuildChannelConfig(
+        string interfaceName, string ip, int port, string serialPort, int baudRate, int dataBits,
+        string parityName, string stopBitsName, string endianName, int station, int registerAddress,
+        string registerAreaName, string valueTypeName, int periodMs)
+    {
+        return new ModbusChannelConfig
+        {
+            Interface = ParseModbusInterface(interfaceName),
+            Ip = ip,
+            Port = port,
+            SerialPort = serialPort,
+            BaudRate = baudRate,
+            DataBits = dataBits,
+            Parity = ParseEnum<Parity>(parityName, "校验位"),
+            StopBits = ParseEnum<StopBits>(stopBitsName, "停止位"),
+            Endian = ParseEndian(endianName),
+            Station = (byte)station,
+            RegisterAddress = (ushort)registerAddress,
+            RegisterArea = ParseRegisterArea(registerAreaName),
+            ValueType = ParseEnum<ModbusValueType>(valueTypeName, "数据类型"),
+            PeriodMs = periodMs
+        };
+    }
+
+    private static void ValidateModbusChannel(
+        string label, string interfaceName, string ip, int port, string serialPort,
+        int baudRate, int dataBits, string endianName, int station, int registerAddress,
+        string registerAreaName, string valueTypeName, int periodMs,
+        bool validateLink, bool requireHolding)
+    {
+        ParseEndian(endianName);
+        ModbusRegisterArea area = ParseRegisterArea(registerAreaName);
+        ModbusValueType valueType = ParseEnum<ModbusValueType>(valueTypeName, "数据类型");
+        int registerCount = valueType is ModbusValueType.Int32 or ModbusValueType.UInt32 or ModbusValueType.Float ? 2 : 1;
+
+        if (station is < 1 or > 247)
+            throw new ArgumentException($"{label}站号必须在 1~247 之间");
+        if (registerAddress < 0 || registerAddress + registerCount > 65536)
+            throw new ArgumentException($"{label}寄存器地址超出有效范围");
+        if (periodMs <= 0)
+            throw new ArgumentException($"{label}读写周期必须大于 0");
+        if (requireHolding && area != ModbusRegisterArea.HoldingRegisters)
+            throw new ArgumentException("输出通道只能使用保持寄存器");
+
+        if (!validateLink)
+            return;
+
+        ModbusInterface modbusInterface = ParseModbusInterface(interfaceName);
+        if (modbusInterface == ModbusInterface.ModbusRtu)
+        {
+            if (string.IsNullOrWhiteSpace(serialPort))
+                throw new ArgumentException($"{label}串口名不能为空");
+            if (baudRate <= 0)
+                throw new ArgumentException($"{label}波特率必须大于 0");
+            if (dataBits is < 5 or > 8)
+                throw new ArgumentException($"{label}数据位必须在 5~8 之间");
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(ip))
+                throw new ArgumentException($"{label}IP 地址不能为空");
+            if (port is < 1 or > 65535)
+                throw new ArgumentException($"{label}端口必须在 1~65535 之间");
+        }
+    }
+
+    private static ModbusInterface ParseModbusInterface(string name)
+    {
+        return name switch
+        {
+            "ModbusRtu" => ModbusInterface.ModbusRtu,
+            "ModbusTcp" => ModbusInterface.ModbusTcp,
+            "ModbusRtuOverTcp" => ModbusInterface.ModbusRtuOverTcp,
+            _ => throw new ArgumentException($"不支持的 Modbus 接口类型：{name}")
+        };
+    }
+
+    private static ModbusRegisterArea ParseRegisterArea(string name)
+    {
+        return name.StartsWith("输入", StringComparison.Ordinal)
+            ? ModbusRegisterArea.InputRegisters
+            : ModbusRegisterArea.HoldingRegisters;
+    }
+
+    private static EnumEndian ParseEndian(string name)
+    {
+        string key = name.Split('(')[0];
+        return ParseEnum<EnumEndian>(key, "字节序");
+    }
+
+    private static T ParseEnum<T>(string name, string label) where T : struct, Enum
+    {
+        if (Enum.TryParse<T>(name, true, out T value))
+            return value;
+        throw new ArgumentException($"{label}取值无效：{name}");
+    }
+
+    private void CloseModbusConnection()
+    {
+        if (_engine.Plant is ModbusPlant modbus)
+            modbus.Close();
+    }
+
     /// <summary>停止状态下切换仿真对象：新建对象、复位状态并调整设定值到有效范围。</summary>
     private void SwitchPlant()
     {
-        double initial = SelectedSimulationModel == SimulationModel.PumpFlow
-            ? 0
-            : AmbientTemperature;
+        CloseModbusConnection();
+
+        double initial = SelectedSimulationModel switch
+        {
+            SimulationModel.Heating or SimulationModel.Cooling => AmbientTemperature,
+            _ => 0
+        };
 
         SimulationPlant plant = SelectedSimulationModel switch
         {
             SimulationModel.Heating => new HeatingPlant(initial),
             SimulationModel.Cooling => new CoolingPlant(initial),
+            SimulationModel.Modbus => new ModbusPlant(),
             _ => new PumpSimulator(initial)
         };
 
@@ -652,6 +1103,7 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             EnsureReady();
+
             _timer.Interval = TimeSpan.FromSeconds(SampleTime);
             _plantRunner.Start();
             _timer.Start();
@@ -668,6 +1120,7 @@ public sealed class MainViewModel : ObservableObject
     {
         _timer.Stop();
         _plantRunner.Stop();
+        CloseModbusConnection();
         IsRunning = false;
         Status = "已停止";
     }
@@ -699,6 +1152,15 @@ public sealed class MainViewModel : ObservableObject
 
     private void OnTimerTick(object? sender, EventArgs e)
     {
+        if (_plantRunner.LastError is { } commError)
+        {
+            _timer.Stop();
+            IsRunning = false;
+            CloseModbusConnection();
+            Status = $"通信异常：{commError.Message}";
+            return;
+        }
+
         try
         {
             ChartSample sample = _engine.Step();
@@ -709,6 +1171,7 @@ public sealed class MainViewModel : ObservableObject
         {
             _timer.Stop();
             IsRunning = false;
+            CloseModbusConnection();
             Status = $"仿真异常：{ex.Message}";
         }
     }
@@ -767,6 +1230,214 @@ public sealed class MainViewModel : ObservableObject
             _engine.PidOutput));
     }
 
+    private void ExportParameters()
+    {
+        const string filter = "PID 仿真参数 (*.pidsim)|*.pidsim";
+
+        try
+        {
+            var dialog = new SaveFileDialog
+            {
+                Filter = filter,
+                DefaultExt = ".pidsim",
+                AddExtension = true,
+                FileName = $"PidSim-{DateTime.Now:yyyyMMdd-HHmmss}.pidsim"
+            };
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            string path = dialog.FileName;
+            if (!string.Equals(Path.GetExtension(path), ".pidsim", StringComparison.OrdinalIgnoreCase))
+                path += ".pidsim";
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(path, JsonSerializer.Serialize(BuildParameterFile(), options), Encoding.UTF8);
+            Status = $"参数已导出：{Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            Status = $"导出失败：{ex.Message}";
+        }
+    }
+
+    private void ImportParameters()
+    {
+        const string filter = "PID 仿真参数 (*.pidsim)|*.pidsim";
+
+        if (IsRunning)
+            return;
+
+        try
+        {
+            var dialog = new OpenFileDialog
+            {
+                Filter = filter,
+                DefaultExt = ".pidsim",
+                CheckFileExists = true
+            };
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            PidSimParameterFile? file = JsonSerializer.Deserialize<PidSimParameterFile>(
+                File.ReadAllText(dialog.FileName, Encoding.UTF8), options);
+
+            if (file is null)
+                throw new InvalidDataException("参数文件内容为空");
+            if (file.FormatVersion != 1)
+                throw new InvalidDataException($"不支持的参数文件格式版本：{file.FormatVersion}");
+
+            ApplyParameterFile(file);
+            Status = $"参数已导入：{Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            Status = $"导入失败：{ex.Message}";
+        }
+    }
+
+    private PidSimParameterFile BuildParameterFile()
+    {
+        return new PidSimParameterFile
+        {
+            SavedAt = DateTime.Now.ToString("O"),
+            SimulationModel = SelectedSimulationModelName,
+            PidType = SelectedPidTypeName,
+            Setpoint = Setpoint,
+            InitialValue = InitialValue,
+            Kp = Kp,
+            Ki = Ki,
+            Kd = Kd,
+            OutputMin = OutputMin,
+            OutputMax = OutputMax,
+            DeltaMax = DeltaMax,
+            IntegralMax = IntegralMax,
+            SampleTime = SampleTime,
+            PumpMinCommand = PumpMinCommand,
+            PumpMaxCommand = PumpMaxCommand,
+            PumpMinOutput = PumpMinOutput,
+            PumpMaxOutput = PumpMaxOutput,
+            PumpTimeConstant = PumpTimeConstant,
+            PumpDelayTime = PumpDelayTime,
+            AmbientTemperature = AmbientTemperature,
+            MaxTemperatureDelta = MaxTemperatureDelta,
+            MaxTemperatureCommand = MaxTemperatureCommand,
+            TemperatureTimeConstant = TemperatureTimeConstant,
+            TemperatureDelayTime = TemperatureDelayTime,
+            MonitorOnlyInput = MonitorOnlyInput,
+            ShareModbusConnection = ShareModbusConnection,
+            InputInterfaceName = InputInterfaceName,
+            InputIp = InputIp,
+            InputPort = InputPort,
+            InputSerialPort = InputSerialPort,
+            InputBaudRate = InputBaudRate,
+            InputDataBits = InputDataBits,
+            InputParityName = InputParityName,
+            InputStopBitsName = InputStopBitsName,
+            InputEndianName = InputEndianName,
+            InputStation = InputStation,
+            InputRegisterAddress = InputRegisterAddress,
+            InputRegisterAreaName = InputRegisterAreaName,
+            InputValueTypeName = InputValueTypeName,
+            InputPeriodMs = InputPeriodMs,
+            OutputInterfaceName = OutputInterfaceName,
+            OutputIp = OutputIp,
+            OutputPort = OutputPort,
+            OutputSerialPort = OutputSerialPort,
+            OutputBaudRate = OutputBaudRate,
+            OutputDataBits = OutputDataBits,
+            OutputParityName = OutputParityName,
+            OutputStopBitsName = OutputStopBitsName,
+            OutputEndianName = OutputEndianName,
+            OutputStation = OutputStation,
+            OutputRegisterAddress = OutputRegisterAddress,
+            OutputRegisterAreaName = OutputRegisterAreaName,
+            OutputValueTypeName = OutputValueTypeName,
+            OutputPeriodMs = OutputPeriodMs
+        };
+    }
+
+    private void ApplyParameterFile(PidSimParameterFile file)
+    {
+        _isInitializing = true;
+        try
+        {
+            _needsControllerRecreate = true;
+
+            SelectedPidTypeName = file.PidType;
+            Setpoint = file.Setpoint;
+            InitialValue = file.InitialValue;
+            Kp = file.Kp;
+            Ki = file.Ki;
+            Kd = file.Kd;
+            OutputMin = file.OutputMin;
+            OutputMax = file.OutputMax;
+            DeltaMax = file.DeltaMax;
+            IntegralMax = file.IntegralMax;
+            SampleTime = file.SampleTime;
+
+            PumpMinCommand = file.PumpMinCommand;
+            PumpMaxCommand = file.PumpMaxCommand;
+            PumpMinOutput = file.PumpMinOutput;
+            PumpMaxOutput = file.PumpMaxOutput;
+            PumpTimeConstant = file.PumpTimeConstant;
+            PumpDelayTime = file.PumpDelayTime;
+
+            AmbientTemperature = file.AmbientTemperature;
+            MaxTemperatureDelta = file.MaxTemperatureDelta;
+            MaxTemperatureCommand = file.MaxTemperatureCommand;
+            TemperatureTimeConstant = file.TemperatureTimeConstant;
+            TemperatureDelayTime = file.TemperatureDelayTime;
+
+            MonitorOnlyInput = file.MonitorOnlyInput;
+            ShareModbusConnection = file.ShareModbusConnection;
+
+            InputInterfaceName = file.InputInterfaceName;
+            InputIp = file.InputIp;
+            InputPort = file.InputPort;
+            InputSerialPort = file.InputSerialPort;
+            InputBaudRate = file.InputBaudRate;
+            InputDataBits = file.InputDataBits;
+            InputParityName = file.InputParityName;
+            InputStopBitsName = file.InputStopBitsName;
+            InputEndianName = file.InputEndianName;
+            InputStation = file.InputStation;
+            InputRegisterAddress = file.InputRegisterAddress;
+            InputRegisterAreaName = file.InputRegisterAreaName;
+            InputValueTypeName = file.InputValueTypeName;
+            InputPeriodMs = file.InputPeriodMs;
+
+            OutputInterfaceName = file.OutputInterfaceName;
+            OutputIp = file.OutputIp;
+            OutputPort = file.OutputPort;
+            OutputSerialPort = file.OutputSerialPort;
+            OutputBaudRate = file.OutputBaudRate;
+            OutputDataBits = file.OutputDataBits;
+            OutputParityName = file.OutputParityName;
+            OutputStopBitsName = file.OutputStopBitsName;
+            OutputEndianName = file.OutputEndianName;
+            OutputStation = file.OutputStation;
+            OutputRegisterAddress = file.OutputRegisterAddress;
+            OutputRegisterAreaName = file.OutputRegisterAreaName;
+            OutputValueTypeName = file.OutputValueTypeName;
+            OutputPeriodMs = file.OutputPeriodMs;
+
+            SelectedSimulationModelName = file.SimulationModel;
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+
+        ApplyCurrentParameters();
+        _samples.Clear();
+        _chartOrigin = _engine.Time;
+        AppendLocalSample();
+        UpdateReadouts();
+    }
+
     private void UpdateReadouts()
     {
         ProcessValue = _engine.ProcessValue;
@@ -774,14 +1445,16 @@ public sealed class MainViewModel : ObservableObject
         Error = _engine.Error;
         ElapsedSeconds = _engine.Time;
 
-        DiagnosticText = _engine.Controller switch
-        {
-            IncrementalPid inc =>
-                $"原始Δ {inc.RawDelta:F2}    实际Δ {inc.LastDelta:F2}",
-            PositionalPid pos =>
-                $"积分项 {pos.IntegralTerm:F2}    Σe {pos.Integral:F2}" +
-                (pos.IsSaturated ? "    [输出饱和]" : string.Empty),
-            _ => "未启动"
-        };
+        DiagnosticText = _engine.MonitorOnly
+            ? "仅监控输入：不执行 PID，也不写入输出通道"
+            : _engine.Controller switch
+            {
+                IncrementalPid inc =>
+                    $"原始Δ {inc.RawDelta:F2}    实际Δ {inc.LastDelta:F2}",
+                PositionalPid pos =>
+                    $"积分项 {pos.IntegralTerm:F2}    Σe {pos.Integral:F2}" +
+                    (pos.IsSaturated ? "    [输出饱和]" : string.Empty),
+                _ => "未启动"
+            };
     }
 }

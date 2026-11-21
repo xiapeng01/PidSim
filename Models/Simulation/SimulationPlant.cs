@@ -58,20 +58,31 @@ public abstract class SimulationPlant
 
     /// <summary>
     /// 执行一次运算（dt 固定为 10ms），把输出插到下标 0，超出滞后长度的旧数据从尾部丢弃。
+    /// I/O 型子类可重写本方法，在不持有 Gate 的情况下完成运算后再调用 StoreOutput。
     /// </summary>
-    public double Step(double command, double dt)
+    public virtual double Step(double command, double dt)
     {
         lock (Gate)
         {
             double output = ComputeOutput(command, dt);
-
-            int capacity = (int)Math.Min((long)DelayIndex + 1, MaxHistoryLength);
-            _history.Insert(0, output);
-            if (_history.Count > capacity)
-                _history.RemoveRange(capacity, _history.Count - capacity);
-
+            StoreOutputCore(output);
             return output;
         }
+    }
+
+    /// <summary>只把已算出的输出写入历史缓存，供重写 Step 的子类使用。</summary>
+    protected void StoreOutput(double output)
+    {
+        lock (Gate)
+            StoreOutputCore(output);
+    }
+
+    private void StoreOutputCore(double output)
+    {
+        int capacity = (int)Math.Min((long)DelayIndex + 1, MaxHistoryLength);
+        _history.Insert(0, output);
+        if (_history.Count > capacity)
+            _history.RemoveRange(capacity, _history.Count - capacity);
     }
 
     /// <summary>按滞后时间取历史输出（流量/温度读数）；历史长度不足时输出 0。</summary>
