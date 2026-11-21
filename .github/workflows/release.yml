@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            throw 'makensis not found after installing NSIS'
+          }
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          dotnet publish PidSimulator.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -o publish
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+
+      - name: Read assembly version
+        shell: pwsh
+        run: |
+          $info = Get-ChildItem -Path obj -Recurse -Filter 'PidSimulator.AssemblyInfo.cs' |
+            Where-Object { $_.FullName -match '\\Release\\' } |
+            Select-Object -First 1
+          if (-not $info) { throw 'Generated AssemblyInfo.cs not found' }
+
+          $content = Get-Content $info.FullName -Raw
+          $version = [regex]::Match($content, 'AssemblyVersionAttribute\("([^"]+)"\)').Groups[1].Value
+          if (-not $version) { throw 'AssemblyVersion not found in generated AssemblyInfo.cs' }
+
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Assembly version: $version"
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'publish'
+          & makensis "/DVERSION=$env:VERSION" "/DPUBLISH_DIR=$publishDir" "installer/PidSimulator.nsi"
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS build failed' }
+
+          $setup = "PidSimulator-$env:VERSION-win-x64-setup.exe"
+          if (-not (Test-Path $setup)) { throw "Installer not found: $setup" }
+
+          "ASSET=$setup" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Installer: $setup"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: PidSimulator ${{ env.VERSION }}
+          files: ${{ env.ASSET }}
+          generate_release_notes: true

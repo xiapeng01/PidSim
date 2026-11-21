@@ -1,0 +1,45 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="WindowBg" Color="#F6F8FC"/>
+    <SolidColorBrush x:Key="WindowBgAlt" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="CardBg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="CardBgSoft" Color="#F2F6FC"/>
+    <SolidColorBrush x:Key="InputBg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="#DCE4F0"/>
+    <SolidColorBrush x:Key="BorderStrong" Color="#B9C6D8"/>
+
+    <SolidColorBrush x:Key="TextPrimary" Color="#1E293B"/>
+    <SolidColorBrush x:Key="TextMuted" Color="#64748B"/>
+    <SolidColorBrush x:Key="TextSubtle" Color="#94A3B8"/>
+
+    <SolidColorBrush x:Key="Accent" Color="#2563EB"/>
+    <SolidColorBrush x:Key="AccentSoft" Color="#DBEAFE"/>
+    <SolidColorBrush x:Key="Success" Color="#059669"/>
+    <SolidColorBrush x:Key="Warning" Color="#D97706"/>
+    <SolidColorBrush x:Key="Danger" Color="#DC2626"/>
+
+    <SolidColorBrush x:Key="ButtonBg" Color="#EEF2F8"/>
+    <SolidColorBrush x:Key="ButtonHover" Color="#E2E8F0"/>
+    <SolidColorBrush x:Key="ButtonPressed" Color="#D5DEEB"/>
+    <SolidColorBrush x:Key="ButtonBorder" Color="#94A3B8"/>
+    <SolidColorBrush x:Key="ButtonBorderHover" Color="#64748B"/>
+    <SolidColorBrush x:Key="PrimaryBg" Color="#2563EB"/>
+    <SolidColorBrush x:Key="PrimaryHover" Color="#1D4ED8"/>
+    <SolidColorBrush x:Key="PrimaryDisabled" Color="#7BA7E8"/>
+    <SolidColorBrush x:Key="DangerBg" Color="#DC2626"/>
+    <SolidColorBrush x:Key="DangerHover" Color="#B91C1C"/>
+    <SolidColorBrush x:Key="DangerDisabled" Color="#E08A8A"/>
+
+    <SolidColorBrush x:Key="MetricTop" Color="#DBEAFE"/>
+    <SolidColorBrush x:Key="PlotBg" Color="#FBFCFF"/>
+    <SolidColorBrush x:Key="ChartGrid" Color="#88CBD5E1"/>
+    <SolidColorBrush x:Key="ChartText" Color="#64748B"/>
+    <SolidColorBrush x:Key="ChartMuted" Color="#94A3B8"/>
+    <SolidColorBrush x:Key="ChartBorder" Color="#DCE4F0"/>
+
+    <SolidColorBrush x:Key="SeriesProcess" Color="#2563EB"/>
+    <SolidColorBrush x:Key="SeriesSetpoint" Color="#059669"/>
+    <SolidColorBrush x:Key="SeriesOutput" Color="#7C3AED"/>
+
+</ResourceDictionary>
