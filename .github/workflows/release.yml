@@ -20,6 +20,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Compute version once
+        shell: pwsh
+        run: |
+          $base = [datetime]'2000-01-01'
+          $now = Get-Date
+          $days = ($now.Date - $base).Days
+          $seconds = [math]::Floor((($now.Hour * 3600) + ($now.Minute * 60) + $now.Second) / 2)
+          $version = "0.1.$days.$seconds"
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Build version: $version"
+
       - name: Install NSIS
         shell: pwsh
         run: |
@@ -46,10 +57,11 @@ jobs:
             --self-contained true `
             -p:PublishSingleFile=true `
             -p:DebugType=None `
+            -p:Version=$env:VERSION `
             -o publish
           if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
-      - name: Read assembly version
+      - name: Read file version
         shell: pwsh
         run: |
           $info = Get-ChildItem -Path obj -Recurse -Filter 'PidSimulator.AssemblyInfo.cs' |
@@ -58,11 +70,11 @@ jobs:
           if (-not $info) { throw 'Generated AssemblyInfo.cs not found' }
 
           $content = Get-Content $info.FullName -Raw
-          $version = [regex]::Match($content, 'AssemblyVersionAttribute\("([^"]+)"\)').Groups[1].Value
-          if (-not $version) { throw 'AssemblyVersion not found in generated AssemblyInfo.cs' }
+          $version = [regex]::Match($content, 'AssemblyFileVersionAttribute\("([^"]+)"\)').Groups[1].Value
+          if (-not $version) { throw 'AssemblyFileVersion not found in generated AssemblyInfo.cs' }
 
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Assembly version: $version"
+          Write-Host "File version: $version"
 
       - name: Build installer
         shell: pwsh
