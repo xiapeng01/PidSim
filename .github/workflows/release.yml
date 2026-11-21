@@ -24,9 +24,18 @@ jobs:
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
-            throw 'makensis not found after installing NSIS'
-          }
+          if ($LASTEXITCODE -ne 0) { throw 'choco install nsis failed' }
+
+          $makensis = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "$env:ProgramFiles\NSIS\makensis.exe",
+            "$env:ChocolateyInstall\bin\makensis.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $makensis) { throw 'makensis.exe not found after installing NSIS' }
+
+          "MAKENSIS=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "makensis: $makensis"
 
       - name: Publish
         shell: pwsh
@@ -59,7 +68,7 @@ jobs:
         shell: pwsh
         run: |
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'publish'
-          & makensis "/DVERSION=$env:VERSION" "/DPUBLISH_DIR=$publishDir" "installer/PidSimulator.nsi"
+          & $env:MAKENSIS "/DVERSION=$env:VERSION" "/DPUBLISH_DIR=$publishDir" "installer/PidSimulator.nsi"
           if ($LASTEXITCODE -ne 0) { throw 'NSIS build failed' }
 
           $setup = "PidSimulator-$env:VERSION-win-x64-setup.exe"
