@@ -68,10 +68,11 @@ jobs:
         shell: pwsh
         run: |
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'publish'
-          & $env:MAKENSIS "/DVERSION=$env:VERSION" "/DPUBLISH_DIR=$publishDir" "installer/PidSimulator.nsi"
+          $icon = Join-Path $env:GITHUB_WORKSPACE 'Assets\app.ico'
+          $setup = Join-Path $env:GITHUB_WORKSPACE "PidSimulator-${env:VERSION}-win-x64-setup.exe"
+          & $env:MAKENSIS "/DVERSION=${env:VERSION}" "/DPUBLISH_DIR=$publishDir" "/DICON=$icon" "/DOUTPUT=$setup" "installer/PidSimulator.nsi"
           if ($LASTEXITCODE -ne 0) { throw 'NSIS build failed' }
 
-          $setup = "PidSimulator-$env:VERSION-win-x64-setup.exe"
           if (-not (Test-Path $setup)) { throw "Installer not found: $setup" }
 
           "ASSET=$setup" | Out-File -FilePath $env:GITHUB_ENV -Append

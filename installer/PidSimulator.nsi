@@ -12,16 +12,24 @@ SetCompressor /FINAL lzma
   !define PUBLISH_DIR "publish"
 !endif
 
+!ifndef ICON
+  !define ICON "..\Assets\app.ico"
+!endif
+
+!ifndef OUTPUT
+  !define OUTPUT "PidSimulator-${VERSION}-win-x64-setup.exe"
+!endif
+
 Name "${APP_NAME} ${VERSION}"
-OutFile "PidSimulator-${VERSION}-win-x64-setup.exe"
+OutFile "${OUTPUT}"
 InstallDir "$PROGRAMFILES\${APP_NAME}"
 InstallDirRegKey HKLM "Software\${APP_NAME}" "InstallDir"
 RequestExecutionLevel admin
 ShowInstDetails show
 ShowUnInstDetails show
 
-Icon "Assets\app.ico"
-UninstallIcon "Assets\app.ico"
+Icon "${ICON}"
+UninstallIcon "${ICON}"
 
 VIProductVersion "${VERSION}"
 VIFileVersion "${VERSION}"
