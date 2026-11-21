@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.IO.Ports;
 using System.Text;
@@ -60,13 +61,15 @@ public sealed class MainViewModel : ObservableObject
     private string _inputIp = "127.0.0.1";
     private int _inputPort = 502;
     private string _inputSerialPort = "COM1";
-    private int _inputBaudRate = 9600;
+    private int _inputBaudRate = 115200;
     private int _inputDataBits = 8;
     private string _inputParityName = "None";
     private string _inputStopBitsName = "One";
     private string _inputEndianName = "CDAB(低字在前,默认)";
     private int _inputStation = 1;
     private int _inputRegisterAddress;
+    private string _inputRegisterAddressText = "0";
+    private bool _inputAddressHex;
     private string _inputRegisterAreaName = "保持寄存器(可读写)";
     private string _inputValueTypeName = "Float";
     private int _inputPeriodMs = 100;
@@ -75,13 +78,15 @@ public sealed class MainViewModel : ObservableObject
     private string _outputIp = "127.0.0.1";
     private int _outputPort = 502;
     private string _outputSerialPort = "COM1";
-    private int _outputBaudRate = 9600;
+    private int _outputBaudRate = 115200;
     private int _outputDataBits = 8;
     private string _outputParityName = "None";
     private string _outputStopBitsName = "One";
     private string _outputEndianName = "CDAB(低字在前,默认)";
     private int _outputStation = 1;
     private int _outputRegisterAddress = 1;
+    private string _outputRegisterAddressText = "1";
+    private bool _outputAddressHex;
     private string _outputRegisterAreaName = "保持寄存器(可读写)";
     private string _outputValueTypeName = "Float";
     private int _outputPeriodMs = 100;
@@ -107,6 +112,9 @@ public sealed class MainViewModel : ObservableObject
         ToggleThemeCommand = new RelayCommand(_ => ToggleTheme());
         ExportParametersCommand = new RelayCommand(_ => ExportParameters());
         ImportParametersCommand = new RelayCommand(_ => ImportParameters(), _ => !IsRunning);
+
+        RefreshSerialPorts(true);
+        RefreshSerialPorts(false);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(SampleTime) };
         _timer.Tick += OnTimerTick;
@@ -523,6 +531,18 @@ public sealed class MainViewModel : ObservableObject
     public IReadOnlyList<string> ModbusInterfaceNames { get; } =
         new[] { "ModbusRtu", "ModbusTcp", "ModbusRtuOverTcp" };
 
+    public IReadOnlyList<string> AddressModeNames { get; } =
+        new[] { "十进制", "十六进制" };
+
+    public ObservableCollection<string> InputSerialPortNames { get; } = new();
+
+    public ObservableCollection<string> OutputSerialPortNames { get; } = new();
+
+    public IReadOnlyList<int> BaudRates { get; } =
+        new[] { 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600 };
+
+    public IReadOnlyList<int> DataBitsOptions { get; } = new[] { 5, 6, 7, 8 };
+
     public IReadOnlyList<string> ParityNames { get; } =
         new[] { "None", "Odd", "Even", "Mark", "Space" };
 
@@ -642,8 +662,51 @@ public sealed class MainViewModel : ObservableObject
     public int InputRegisterAddress
     {
         get => _inputRegisterAddress;
-        set { if (SetProperty(ref _inputRegisterAddress, value)) OnParameterChanged(); }
+        set => ApplyInputRegisterAddress(value);
     }
+
+    public string InputRegisterAddressText
+    {
+        get => _inputRegisterAddressText;
+        set
+        {
+            if (!SetProperty(ref _inputRegisterAddressText, value))
+                return;
+
+            if (TryParseAddress(value, _inputAddressHex, out int address))
+            {
+                if (_inputRegisterAddress != address)
+                {
+                    _inputRegisterAddress = address;
+                    OnPropertyChanged(nameof(InputRegisterAddress));
+                }
+                OnParameterChanged();
+            }
+            else
+            {
+                Status = "输入寄存器地址格式无效";
+            }
+        }
+    }
+
+    public string InputAddressModeName
+    {
+        get => _inputAddressHex ? AddressModeNames[1] : AddressModeNames[0];
+        set
+        {
+            bool hex = value == AddressModeNames[1];
+            if (_inputAddressHex == hex)
+                return;
+
+            _inputAddressHex = hex;
+            OnPropertyChanged(nameof(InputAddressModeName));
+            OnPropertyChanged(nameof(InputAddressHex));
+            SetProperty(ref _inputRegisterAddressText, FormatAddress(_inputRegisterAddress, hex), nameof(InputRegisterAddressText));
+            OnParameterChanged();
+        }
+    }
+
+    public bool InputAddressHex => _inputAddressHex;
 
     public string InputRegisterAreaName
     {
@@ -734,8 +797,51 @@ public sealed class MainViewModel : ObservableObject
     public int OutputRegisterAddress
     {
         get => _outputRegisterAddress;
-        set { if (SetProperty(ref _outputRegisterAddress, value)) OnParameterChanged(); }
+        set => ApplyOutputRegisterAddress(value);
     }
+
+    public string OutputRegisterAddressText
+    {
+        get => _outputRegisterAddressText;
+        set
+        {
+            if (!SetProperty(ref _outputRegisterAddressText, value))
+                return;
+
+            if (TryParseAddress(value, _outputAddressHex, out int address))
+            {
+                if (_outputRegisterAddress != address)
+                {
+                    _outputRegisterAddress = address;
+                    OnPropertyChanged(nameof(OutputRegisterAddress));
+                }
+                OnParameterChanged();
+            }
+            else
+            {
+                Status = "输出寄存器地址格式无效";
+            }
+        }
+    }
+
+    public string OutputAddressModeName
+    {
+        get => _outputAddressHex ? AddressModeNames[1] : AddressModeNames[0];
+        set
+        {
+            bool hex = value == AddressModeNames[1];
+            if (_outputAddressHex == hex)
+                return;
+
+            _outputAddressHex = hex;
+            OnPropertyChanged(nameof(OutputAddressModeName));
+            OnPropertyChanged(nameof(OutputAddressHex));
+            SetProperty(ref _outputRegisterAddressText, FormatAddress(_outputRegisterAddress, hex), nameof(OutputRegisterAddressText));
+            OnParameterChanged();
+        }
+    }
+
+    public bool OutputAddressHex => _outputAddressHex;
 
     public string OutputRegisterAreaName
     {
@@ -997,6 +1103,65 @@ public sealed class MainViewModel : ObservableObject
                 throw new ArgumentException($"{label}IP 地址不能为空");
             if (port is < 1 or > 65535)
                 throw new ArgumentException($"{label}端口必须在 1~65535 之间");
+        }
+    }
+
+    private void ApplyInputRegisterAddress(int value)
+    {
+        if (SetProperty(ref _inputRegisterAddress, value))
+        {
+            SetProperty(ref _inputRegisterAddressText, FormatAddress(value, _inputAddressHex), nameof(InputRegisterAddressText));
+            OnParameterChanged();
+        }
+    }
+
+    private void ApplyOutputRegisterAddress(int value)
+    {
+        if (SetProperty(ref _outputRegisterAddress, value))
+        {
+            SetProperty(ref _outputRegisterAddressText, FormatAddress(value, _outputAddressHex), nameof(OutputRegisterAddressText));
+            OnParameterChanged();
+        }
+    }
+
+    private static string FormatAddress(int address, bool hex)
+    {
+        return hex ? $"0x{address:X4}" : address.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static bool TryParseAddress(string text, bool hex, out int address)
+    {
+        string value = (text ?? string.Empty).Trim();
+        if (hex)
+        {
+            if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                value = value[2..];
+            return int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out address);
+        }
+
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out address);
+    }
+
+    /// <summary>刷新指定通道的串口列表；只更新该通道，避免另一通道的选中项被集合重置清掉。</summary>
+    public void RefreshSerialPorts(bool input)
+    {
+        ObservableCollection<string> target = input ? InputSerialPortNames : OutputSerialPortNames;
+        string? selected = input ? InputSerialPort : OutputSerialPort;
+
+        var ports = SerialPort.GetPortNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        if (!string.IsNullOrWhiteSpace(selected) && !ports.Contains(selected, StringComparer.OrdinalIgnoreCase))
+            ports.Add(selected);
+
+        for (int i = target.Count - 1; i >= 0; i--)
+        {
+            if (!ports.Contains(target[i], StringComparer.OrdinalIgnoreCase))
+                target.RemoveAt(i);
+        }
+
+        foreach (string port in ports)
+        {
+            if (!target.Contains(port, StringComparer.OrdinalIgnoreCase))
+                target.Add(port);
         }
     }
 
@@ -1339,6 +1504,7 @@ public sealed class MainViewModel : ObservableObject
             InputEndianName = InputEndianName,
             InputStation = InputStation,
             InputRegisterAddress = InputRegisterAddress,
+            InputAddressHex = InputAddressHex,
             InputRegisterAreaName = InputRegisterAreaName,
             InputValueTypeName = InputValueTypeName,
             InputPeriodMs = InputPeriodMs,
@@ -1353,6 +1519,7 @@ public sealed class MainViewModel : ObservableObject
             OutputEndianName = OutputEndianName,
             OutputStation = OutputStation,
             OutputRegisterAddress = OutputRegisterAddress,
+            OutputAddressHex = OutputAddressHex,
             OutputRegisterAreaName = OutputRegisterAreaName,
             OutputValueTypeName = OutputValueTypeName,
             OutputPeriodMs = OutputPeriodMs
@@ -1404,6 +1571,7 @@ public sealed class MainViewModel : ObservableObject
             InputStopBitsName = file.InputStopBitsName;
             InputEndianName = file.InputEndianName;
             InputStation = file.InputStation;
+            InputAddressModeName = file.InputAddressHex ? AddressModeNames[1] : AddressModeNames[0];
             InputRegisterAddress = file.InputRegisterAddress;
             InputRegisterAreaName = file.InputRegisterAreaName;
             InputValueTypeName = file.InputValueTypeName;
@@ -1419,6 +1587,7 @@ public sealed class MainViewModel : ObservableObject
             OutputStopBitsName = file.OutputStopBitsName;
             OutputEndianName = file.OutputEndianName;
             OutputStation = file.OutputStation;
+            OutputAddressModeName = file.OutputAddressHex ? AddressModeNames[1] : AddressModeNames[0];
             OutputRegisterAddress = file.OutputRegisterAddress;
             OutputRegisterAreaName = file.OutputRegisterAreaName;
             OutputValueTypeName = file.OutputValueTypeName;

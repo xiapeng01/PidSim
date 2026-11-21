@@ -67,7 +67,7 @@ public sealed class PidSimParameterFile
 
     public string InputSerialPort { get; set; } = "COM1";
 
-    public int InputBaudRate { get; set; } = 9600;
+    public int InputBaudRate { get; set; } = 115200;
 
     public int InputDataBits { get; set; } = 8;
 
@@ -80,6 +80,8 @@ public sealed class PidSimParameterFile
     public int InputStation { get; set; } = 1;
 
     public int InputRegisterAddress { get; set; }
+
+    public bool InputAddressHex { get; set; }
 
     public string InputRegisterAreaName { get; set; } = "保持寄存器(可读写)";
 
@@ -95,7 +97,7 @@ public sealed class PidSimParameterFile
 
     public string OutputSerialPort { get; set; } = "COM1";
 
-    public int OutputBaudRate { get; set; } = 9600;
+    public int OutputBaudRate { get; set; } = 115200;
 
     public int OutputDataBits { get; set; } = 8;
 
@@ -108,6 +110,8 @@ public sealed class PidSimParameterFile
     public int OutputStation { get; set; } = 1;
 
     public int OutputRegisterAddress { get; set; } = 1;
+
+    public bool OutputAddressHex { get; set; }
 
     public string OutputRegisterAreaName { get; set; } = "保持寄存器(可读写)";
 

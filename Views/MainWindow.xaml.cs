@@ -2,6 +2,7 @@
 using System.Windows.Input;
 using System.Windows.Media;
 using PidSimulator.Services;
+using PidSimulator.ViewModels;
 
 namespace PidSimulator.Views;
 
@@ -54,6 +55,18 @@ public partial class MainWindow : Window
                 Chart.SuspendRendering = false;
             }
         }
+    }
+
+    private void InputSerialPortComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+            viewModel.RefreshSerialPorts(true);
+    }
+
+    private void OutputSerialPortComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+            viewModel.RefreshSerialPorts(false);
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
